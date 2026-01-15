@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/colors.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends StatefulWidget {
   final double maxHours;
@@ -20,6 +21,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int maxMinutes;
   late int regenMinutes;
 
+  late int _initialMaxMinutes;
+  late int _initialRegenMinutes;
+
+  bool _hasChanged = false;
+
   late TextEditingController maxHController;
   late TextEditingController maxMController;
   late TextEditingController regenHController;
@@ -31,6 +37,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     maxMinutes = (widget.maxHours * 60).round().clamp(5, 720);
     regenMinutes = widget.regenMinutes.round().clamp(5, 720);
+
+    _initialMaxMinutes = maxMinutes;
+    _initialRegenMinutes = regenMinutes;
 
     maxHController = TextEditingController(text: (maxMinutes ~/ 60).toString());
     maxMController = TextEditingController(
@@ -54,18 +63,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _goBack() {
-    Navigator.pop(context, {
-      'maxHours': maxMinutes / 60.0,
-      'regenMinutes': regenMinutes.toDouble(),
+  void _openPrivacyPolicy() async {
+    final url = Uri.parse("https://xecto75.github.io/screen-stamina/");
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      throw "Could not open privacy policy";
+    }
+  }
+
+  void _markChanged() {
+    final changed =
+        maxMinutes != _initialMaxMinutes ||
+        regenMinutes != _initialRegenMinutes;
+
+    if (changed != _hasChanged) {
+      setState(() => _hasChanged = changed);
+    }
+  }
+
+  void _restoreInitialValues() {
+    setState(() {
+      maxMinutes = _initialMaxMinutes;
+      regenMinutes = _initialRegenMinutes;
+
+      maxHController.text = (maxMinutes ~/ 60).toString();
+      maxMController.text = (maxMinutes % 60).toString().padLeft(2, '0');
+
+      regenHController.text = (regenMinutes ~/ 60).toString();
+      regenMController.text = (regenMinutes % 60).toString().padLeft(2, '0');
+
+      _hasChanged = false;
     });
   }
 
-  // ================= INPUT WIDGETS =================
+  Future<void> _goBack() async {
+    if (!_hasChanged) {
+      Navigator.pop(context, null);
+      return;
+    }
+
+    final shouldApply = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: darkBlue,
+          title: const Text("Reset Timer?", style: TextStyle(color: white)),
+          content: const Text(
+            "Changing settings will reset your current timer.\n\nDo you want to continue?",
+            style: TextStyle(color: white),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel", style: TextStyle(color: white)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Apply", style: TextStyle(color: white)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldApply == true) {
+      Navigator.pop(context, {
+        'maxHours': maxMinutes / 60.0,
+        'regenMinutes': regenMinutes.toDouble(),
+      });
+    } else {
+      _restoreInitialValues(); // 🔥 rollback
+    }
+  }
 
   Widget _numberBox(TextEditingController controller, VoidCallback onCommit) {
     return SizedBox(
-      width: 64, // slightly wider to avoid clipping
+      width: 64,
       child: TextField(
         controller: controller,
         keyboardType: TextInputType.number,
@@ -87,14 +159,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             borderSide: const BorderSide(color: white, width: 2),
           ),
         ),
-
-        // ✅ keyboard "done"
         onEditingComplete: onCommit,
-
-        // ✅ tap outside (mobile fix)
-        onTapOutside: (_) {
-          onCommit();
-        },
+        onTapOutside: (_) => onCommit(),
       ),
     );
   }
@@ -115,6 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       mController.text = (total % 60).toString().padLeft(2, '0');
 
       onChanged(total);
+      _markChanged();
       FocusScope.of(context).unfocus();
     }
 
@@ -129,8 +196,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
-
-  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
@@ -158,107 +223,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         body: SafeArea(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => FocusScope.of(context).unfocus(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const SizedBox(height: 30),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              children: [
+                const SizedBox(height: 30),
 
-                  // ================= MAX TIME =================
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Max Time",
-                        style: TextStyle(color: white, fontSize: 18),
-                      ),
-                      _timeInputPair(
-                        hController: maxHController,
-                        mController: maxMController,
-                        onChanged: (v) {
-                          setState(() {
-                            maxMinutes = v;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: darkBlue,
-                      inactiveTrackColor: barGrey,
-                      thumbColor: white,
-                      overlayColor: darkBlue.withOpacity(0.2),
-                      trackHeight: 4,
+                // MAX TIME
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Max Time",
+                      style: TextStyle(color: white, fontSize: 18),
                     ),
-                    child: Slider(
-                      min: 0,
-                      max: 24,
-                      divisions: 24,
-                      value: (maxMinutes / 30).round().toDouble(),
+                    _timeInputPair(
+                      hController: maxHController,
+                      mController: maxMController,
                       onChanged: (v) {
-                        setState(() {
-                          maxMinutes = (v.round() * 30).clamp(5, 720);
-                          maxHController.text = (maxMinutes ~/ 60).toString();
-                          maxMController.text = (maxMinutes % 60)
-                              .toString()
-                              .padLeft(2, '0');
-                        });
+                        setState(() => maxMinutes = v);
+                        _markChanged();
                       },
                     ),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: darkBlue,
+                    inactiveTrackColor: barGrey,
+                    thumbColor: white,
+                    overlayColor: darkBlue.withOpacity(0.2),
+                    trackHeight: 4,
                   ),
-
-                  const SizedBox(height: 40),
-
-                  // ================= REGEN TIME =================
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Regen Time",
-                        style: TextStyle(color: white, fontSize: 18),
-                      ),
-                      _timeInputPair(
-                        hController: regenHController,
-                        mController: regenMController,
-                        onChanged: (v) {
-                          setState(() {
-                            regenMinutes = v;
-                          });
-                        },
-                      ),
-                    ],
+                  child: Slider(
+                    min: 0,
+                    max: 24,
+                    divisions: 24,
+                    value: (maxMinutes / 30).round().toDouble(),
+                    onChanged: (v) {
+                      setState(() {
+                        maxMinutes = (v.round() * 30).clamp(5, 720);
+                        maxHController.text = (maxMinutes ~/ 60).toString();
+                        maxMController.text = (maxMinutes % 60)
+                            .toString()
+                            .padLeft(2, '0');
+                      });
+                      _markChanged();
+                    },
                   ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: darkBlue,
-                      inactiveTrackColor: barGrey,
-                      thumbColor: white,
-                      overlayColor: darkBlue.withOpacity(0.2),
-                      trackHeight: 4,
+                ),
+
+                const SizedBox(height: 40),
+
+                // REGEN TIME
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Regen Time",
+                      style: TextStyle(color: white, fontSize: 18),
                     ),
-                    child: Slider(
-                      min: 0,
-                      max: 24,
-                      divisions: 24,
-                      value: (regenMinutes / 30).round().toDouble(),
+                    _timeInputPair(
+                      hController: regenHController,
+                      mController: regenMController,
                       onChanged: (v) {
-                        setState(() {
-                          regenMinutes = (v.round() * 30).clamp(5, 720);
-                          regenHController.text = (regenMinutes ~/ 60)
-                              .toString();
-                          regenMController.text = (regenMinutes % 60)
-                              .toString()
-                              .padLeft(2, '0');
-                        });
+                        setState(() => regenMinutes = v);
+                        _markChanged();
                       },
                     ),
+                  ],
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: darkBlue,
+                    inactiveTrackColor: barGrey,
+                    thumbColor: white,
+                    overlayColor: darkBlue.withOpacity(0.2),
+                    trackHeight: 4,
                   ),
-                ],
-              ),
+                  child: Slider(
+                    min: 0,
+                    max: 24,
+                    divisions: 24,
+                    value: (regenMinutes / 30).round().toDouble(),
+                    onChanged: (v) {
+                      setState(() {
+                        regenMinutes = (v.round() * 30).clamp(5, 720);
+                        regenHController.text = (regenMinutes ~/ 60).toString();
+                        regenMController.text = (regenMinutes % 60)
+                            .toString()
+                            .padLeft(2, '0');
+                      });
+                      _markChanged();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 310),
+                TextButton(
+                  onPressed: _openPrivacyPolicy,
+                  child: const Text(
+                    "Privacy Policy",
+                    style: TextStyle(color: white, fontSize: 16),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

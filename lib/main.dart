@@ -38,6 +38,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   double currentSeconds = 7200;
 
   bool isActive = false;
+  bool _isFrozen = false; // 🔥 freezes time when in settings
 
   StaminaZone _currentZone = StaminaZone.high;
 
@@ -55,7 +56,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     for (int i = 0; i < 3; i++) {
       setState(() => _flashWhite = true);
       await Future.delayed(const Duration(milliseconds: 100));
-
       setState(() => _flashWhite = false);
       await Future.delayed(const Duration(milliseconds: 100));
     }
@@ -77,7 +77,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && !_isFrozen) {
       _applyBackgroundDelta();
     }
     lastUpdate = DateTime.now();
@@ -103,6 +103,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   // ================= TIMER LOGIC =================
   void _applyBackgroundDelta() {
+    if (_isFrozen) return;
+
     final now = DateTime.now();
     final elapsed = now.difference(lastUpdate).inSeconds.toDouble();
     if (elapsed <= 0) return;
@@ -124,30 +126,29 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final dt = 1 / fps;
 
       if (elapsed >= 2) {
-        _applyBackgroundDelta();
+        if (!_isFrozen) _applyBackgroundDelta();
         lastUpdate = now;
         return;
       }
 
-      if (isActive) {
-        currentSeconds -= dt;
-      } else {
-        currentSeconds += (maxSeconds / regenSeconds) * dt;
+      if (!_isFrozen) {
+        if (isActive) {
+          currentSeconds -= dt;
+        } else {
+          currentSeconds += (maxSeconds / regenSeconds) * dt;
+        }
       }
 
       currentSeconds = currentSeconds.clamp(0, maxSeconds);
+
       if (currentSeconds <= 0 && !_zeroTriggered) {
         _zeroTriggered = true;
         _triggerZeroFeedback();
       }
-
-      if (currentSeconds > 0) {
-        _zeroTriggered = false;
-      }
+      if (currentSeconds > 0) _zeroTriggered = false;
 
       lastUpdate = now;
       _checkHapticThreshold();
-
       setState(() {});
     });
   }
@@ -183,7 +184,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         children: [
           Scaffold(
             backgroundColor: bodyColor,
-
             appBar: AppBar(
               toolbarHeight: 80,
               backgroundColor: headerColor,
@@ -200,6 +200,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   splashRadius: 34,
                   icon: const Icon(Icons.settings, color: white),
                   onPressed: () async {
+                    final wasActive = isActive;
+
+                    _isFrozen = true; // 🔥 freeze time
+                    lastUpdate = DateTime.now();
+
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -210,12 +215,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     );
 
+                    _isFrozen = false;
+                    isActive = wasActive;
+                    lastUpdate = DateTime.now();
+
                     if (result != null) {
                       setState(() {
                         maxSeconds = result['maxHours'] * 3600;
                         regenSeconds = result['regenMinutes'] * 60;
                         currentSeconds = maxSeconds;
                       });
+                    } else {
+                      setState(() {});
                     }
                   },
                 ),
@@ -230,7 +241,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     child: Column(
                       children: [
                         const Spacer(),
-
                         Text(
                           format(Duration(seconds: currentSeconds.floor())),
                           style: const TextStyle(
@@ -239,10 +249,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-
                         const Spacer(),
-
-                        // Progress bar
                         Container(
                           width: 320,
                           height: 40,
@@ -265,10 +272,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
-
                         const Spacer(),
-
-                        // Circular button
                         SizedBox(
                           width: 170,
                           height: 140,
@@ -279,9 +283,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                               elevation: 0,
                             ),
                             onPressed: () {
-                              setState(() {
-                                isActive = !isActive;
-                              });
+                              setState(() => isActive = !isActive);
                             },
                             child: Text(
                               isActive ? "Pause" : "Resume",
@@ -293,7 +295,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
-
                         const Spacer(),
                       ],
                     ),
@@ -302,8 +303,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
-
-          // 🔥 FLASH OVERLAY — NOW COVERS HEADER + BODY
           if (_flashWhite)
             Positioned.fill(
               child: IgnorePointer(child: Container(color: Colors.white)),
