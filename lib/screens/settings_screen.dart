@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../theme/colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+
+
 class SettingsScreen extends StatefulWidget {
   final double maxHours;
   final double regenMinutes;
@@ -199,6 +201,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+
+    final size = MediaQuery.of(context).size;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: darkBlue,
@@ -318,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 310),
+                Spacer(),
                 TextButton(
                   onPressed: _openPrivacyPolicy,
                   child: const Text(
@@ -326,6 +331,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(color: white, fontSize: 16),
                   ),
                 ),
+                const SizedBox(height: 40)
               ],
             ),
           ),

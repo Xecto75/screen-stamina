@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'theme/colors.dart';
 import 'screens/settings_screen.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 
 enum StaminaZone { high, mid, low }
@@ -17,7 +16,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: ThemeData(textTheme: GoogleFonts.fugazOneTextTheme()),
+      theme: ThemeData(fontFamily: 'FugazOne'),
       debugShowCheckedModeBanner: false,
       home: MainScreen(),
     );
